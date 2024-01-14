@@ -19,8 +19,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Map;
-import java.util.TreeMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.stream.Collector;
+import java.util.stream.Stream;
 
 import static java.util.stream.Collectors.groupingBy;
 
@@ -28,8 +29,11 @@ import static java.util.stream.Collectors.groupingBy;
  * Changelog:
  * <p>
  * Approximate measures:
- * - Baseline:           190700 ms
- * - Parallel stream:     70000 ms
+ * - Baseline:                                      190700 ms
+ * - Use of a parallel stream:                      70000 ms
+ * - ConcurrentSkipListMap instead of Tree map:     70000 ms
+ * <p>
+ * Quick launch with: jbang src/main/java/dev/morling/onebrc/CalculateAverage_franpek.java
  */
 public class CalculateAverage_franpek {
 
@@ -59,6 +63,8 @@ public class CalculateAverage_franpek {
     }
 
     public static void main(String[] args) throws IOException {
+        long start = System.currentTimeMillis();
+
         Collector<Measurement, MeasurementAggregator, ResultRow> collector = Collector.of(
                 MeasurementAggregator::new,
                 (a, m) -> {
@@ -78,10 +84,14 @@ public class CalculateAverage_franpek {
                 },
                 agg -> new ResultRow(agg.min, agg.sum / agg.count, agg.max));
 
-        Map<String, ResultRow> measurements = new TreeMap<>(Files.lines(Paths.get(FILE))
-                .map(l -> new Measurement(l.split(";"))).parallel()
-                .collect(groupingBy(Measurement::station, collector)));
+        Stream<String> lines = Files.lines(Paths.get(FILE)).parallel();
+        Stream<Measurement> measurements = lines.map(line -> new Measurement(line.split(";")));
+        Map<String, ResultRow> processedStations = measurements.collect(groupingBy(Measurement::station, collector));
+        ConcurrentSkipListMap<String, ResultRow> orderedProcessedStations = new ConcurrentSkipListMap<>(processedStations);
 
-        System.out.println(measurements);
+        System.out.println(orderedProcessedStations);
+        System.out.println(System.currentTimeMillis() - start + " ms");
     }
+
 }
+
